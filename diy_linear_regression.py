@@ -1,5 +1,7 @@
 '''
 diy linear regression learning algorithm
+
+
 '''
 
 import numpy as np
@@ -7,95 +9,32 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # for comparison
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LinearRegression
 
 # easy progress bar
 import tqdm
 
 
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
+def rmse(y, y_pred):
+    '''rms error between labels, predictions'''
+    return np.dot((y - y_pred), (y - y_pred).T) // len(y)
 
 
-def predict_proba(X, w):
-    '''
-    returns sigmoid(w * X.T)
-    in this example:
-    predicts genders of array of normalized [Height, Weight]
-    '''
-    # add bias as column[0]
-    X = np.concatenate([np.ones((X.shape[0], 1)), X], axis=1)
-
-    raw_pred = np.dot(w, X.T)
-    probs = sigmoid(raw_pred)
-
-    return probs
-
-
-def prob_error(y, y_prob):
-    '''
-    label y[i] = {0 or 1}
-    if y[i] == 0, error += y_prob
-    if y[i] == 1, error += 1 - y_prob
-
-    args:
-        y: binary labels
-        y_prob: predicted probabilities
-
-    returns:
-        mean absolute error
-    '''
-    e = abs(np.dot(y_prob, np.subtract(y, 1))) + \
-        abs(np.dot(np.subtract(y_prob, 1), y))
-    return e / len(y)
-
-
-def accuracy(y, y_prob):
-    '''return percentage of correct predictions (i.e. >< .5)'''
-    assert len(y) == len(y_prob)
-    pred = y_prob > .5
-    return sum(y == pred) / len(y)
-
-
-def dumb_gradient(w, X, y, step, metric=prob_error):
-    '''
-    finds gradient of metric with respect to current weights:
-    d(metric) / dw
-
-    'Dumb' because it is not computed (which would be relatively easy)
-    but instead measured across all samples.
-
-    returns:
-        gradient, error(metric), accuracy
-    '''
-    prob = predict_proba(X, w)
-    error = metric(y, prob)
-    acc = accuracy(y, prob)
-    # print('error @ epoch start: {}; accuracy: {}'.format(error, acc))
-    grad = []
-    # print('input weights: {}: {}'.format(type(w), w))
-    for i in range(len(w)):
-        new_w = w.copy()
-        new_w[i] += step
-        # print(new_w)
-        new_error = metric(y, predict_proba(X, new_w))
-        grad.append((error - new_error) / step)
-
-    # grad is the change in error when w[i] is increased by .01
-    # grad = dE/dw for w in weights
-    # if grad[i] is positive,
-    # print('unnormalized grad: {:.5} {:.5} {:.5}'.format(*[g for g in grad]))
-
-    return np.array(grad), error, acc
-
-
-class Logistic():
+class DIYLinearRegression():
     '''
     Logistic implements logistic regression using above functions;
     a rough analog to sklearn.linear.LogisticRegression.
     additionally stores error and accuracy histories as lists.
+
+    args:
+        X, y: ndarrays with matching numbers of samples
+        metric: a function
+            args:
+                labels, predictions: ndarrays
+            returns:
+                loss: float
     '''
-    def __init__(self, X, y, metric=prob_error):
+    def __init__(self, X, y, metric=rmse):
         print('logistic regression on with {} as metric'.format(metric))
         self.X = X.copy()
         self.y = y.copy()
@@ -115,7 +54,38 @@ class Logistic():
         self.standardize()
 
         for i in range(1):
-            print('Random sample sanity check:', self.X[np.random.randint(0, self.n)])
+            print('Random sample sanity check:',
+                  self.X[np.random.randint(0, self.n)])
+
+    def dumb_gradient(self, metric=rmse):
+        '''
+        finds gradient of metric with respect to current weights:
+        d(metric) / dw
+
+        'Dumb' because it is not computed (which would be relatively easy)
+        but instead measured empirically across all samples.
+
+        returns:
+            gradient, error(metric), accuracy
+        '''
+        error = metric(self.y, prob)
+        acc = accuracy(y, prob)
+        # print('error @ epoch start: {}; accuracy: {}'.format(error, acc))
+        grad = []
+        # print('input weights: {}: {}'.format(type(w), w))
+        for i in range(len(w)):
+            new_w = w.copy()
+            new_w[i] += step
+            # print(new_w)
+            new_error = metric(y, predict_proba(X, new_w))
+            grad.append((error - new_error) / step)
+
+        # grad is the change in error when w[i] is increased by .01
+        # grad = dE/dw for w in weights
+        # if grad[i] is positive,
+        # print('unnormalized grad: {:.5} {:.5} {:.5}'.format(*[g for g in grad]))
+
+        return np.array(grad), error, acc
 
     def standardize(self):
         # standardize data

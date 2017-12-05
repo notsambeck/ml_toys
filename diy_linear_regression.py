@@ -16,9 +16,11 @@ from sklearn.linear_model import LinearRegression
 import tqdm
 
 
-def rmse(y, y_pred):
-    '''rms error between labels, predictions'''
-    return np.dot((y - y_pred), (y - y_pred).T) // len(y)
+def mse(y, y_pred):
+    '''mean square error between labels, predictions'''
+    # print((y - y_pred).T)
+    e = np.dot((y - y_pred).T, (y - y_pred))
+    return e / len(y)
 
 
 class DIYLinearRegression():
@@ -32,30 +34,28 @@ class DIYLinearRegression():
 
         metric: a function that maps (y, preds) to loss
     '''
-    def __init__(self, X, y, metric=rmse):
+    def __init__(self, X, y, metric=mse, verbose=1):
         print('logistic regression on with {} as metric'.format(metric))
-        self.X = X.copy()
+        self.X = np.concatenate([np.ones((X.shape[0], 1)), X], axis=1)
         self.y = y.copy()
-        self.n = X.shape[0]
-        self.step = .001      # distance for gradient measurement
-        self.rate = 50        # how many times gradient to step
+        self.n = X.shape[0]   # number of samples
+        self.step = .001       # distance for gradient measurement
+        self.rate = .1         # how many times gradient to step
         self.metric = metric  # accuracy or other metric
 
-        self.w = np.random.randn(X.shape[1] + 1)
+        self.w = np.random.randn(X.shape[1] + 1)  # bias added to w
         print('initialized weights to:', self.w)
 
         self.err_history = []
-        self.acc_history = []
-
-        self.means = []     # save statistics about columns of X
-        self.stds = []      # in order to standardize additional data
-        self.standardize()
+        self.v = verbose
+        if self.v:
+            print('X shape', self.X.shape)
 
         for i in range(1):
             print('Random sample sanity check:',
                   self.X[np.random.randint(0, self.n)])
 
-    def dumb_gradient(self, metric=rmse):
+    def dumb_gradient(self):
         '''
         finds gradient of metric with respect to current weights:
         d(metric) / dw
@@ -66,98 +66,53 @@ class DIYLinearRegression():
         returns:
             gradient, error(metric), accuracy
         '''
-        error = metric(self.y, self.predict(self.X))
-        # print('error @ epoch start: {}; accuracy: {}'.format(error, acc))
+        error = self.metric(self.y, self.predict(self.X))
         grad = []
-        # print('input weights: {}: {}'.format(type(w), w))
         for i in range(len(self.w)):
-            new_w = self.w.copy()
-            new_w[i] += self.step
-            # print(new_w)
-            new_error = metric(self.y, self.predict(self.X))
+            self.w[i] += self.step
+            # print(self.w)
+            new_error = self.metric(self.y, self.predict(self.X))
+            self.w[i] -= self.step
             grad.append((error - new_error) / self.step)
 
-        # grad is the change in error when w[i] is increased by .01
+        # grad is the change in error when w[i] is increased by self.step
         # grad = dE/dw for w in weights
-        # if grad[i] is positive,
-        # print('unnormalized grad:{:.5}{:.5}{:.5}'.format(*[g for g in grad]))
-
+        # if grad[i] is positive, increasing w[i] increases error in predictions
         return np.array(grad), error
 
-    def standardize(self):
-        # standardize data
-        print()
-        print('standardizing data:')
-        for i in range(self.X.shape[1]):
-            # save mean, std so new values can be converted/standardize values
-            self.means.append(self.X[:, i].mean())
-            print('mean of X[{}]: {}'.format(i, self.means[i]))
-            self.X[:, i] = np.subtract(self.X[:, i], self.means[i])
-            self.stds.append(self.X[:, i].std())
-            print('std. dev. of X[{}]: {}'.format(i, self.stds[i]))
-            self.X[:, i] = np.divide(self.X[:, i], self.stds[i])     # / std
-        print()
-
-    def _train(self, v=1):
+    def _fit(self):
         '''train one epoch and print'''
-        grad, error, acc = self.dumb_gradient(self.w,
-                                              self.X,
-                                              self.y,
-                                              self.step,
-                                              self.metric)
-        if v:
-            print('weights are: {:f} {:f} {:f}'.format(*self.w))
-            print('gradient is: {:f} {:f} {:f}'.format(*grad))
-            print('error: {:.5} accuracy: {:.2}'.format(error, acc))
+        grad, error = self.dumb_gradient()
+        if self.v:
+            print('weights : {:f} {:f} {:f}'.format(*self.w))
+            print('gradient: {:.1f} {:.1f} {:.1f}'.format(*grad))
+            print('error:    {}'.format(error))
 
-        self.w = np.add(np.multiply(grad, self.rate), self.w)
-
+        self.w = (grad * self.rate / error) + self.w
         self.err_history.append(error)
-        self.acc_history.append(acc)
 
-    def train(self, n):
+    def fit(self, n):
         '''train n epochs'''
-        for i in tqdm.tqdm(range(n)):
-            self._train(v=0)
-
-    def predict_new_sample(self, x):
-        '''predict new array of [heights, weights]'''
-        x = np.subtract(x, self.means)
-        x = np.divide(x, self.stds)
-        return self.predict(x)
+        if self.v:
+            for i in range(n):
+                self._fit()
+        else:
+            for i in tqdm.tqdm(range(n)):
+                self._fit()
 
     def predict(self, x):
-        '''predict already normalized data'''
-        return np.dot(np.concatenate([x, np.ones(x.shape[0], 1)]), self.w)
+        '''predict data'''
+        return np.dot(self.w, x.T)
 
-    def display(self, df):
+    def display(self):
         # make masks
-        df.Gender = (df.Gender == 'Male').astype(int)
-        pred_weight = self.predict_new_sample(df[['Height', 'Gender']])
-
-        y = df.Weight.values
-
-        fig, axes = plt.subplots(nrows=1, ncols=2)
+        fig, axes = plt.subplots(nrows=1, ncols=1)
         plt.title = 'gradient metric: {}'.format(self.metric)
-
-        # subplot 1: pandas
-        plt.ylabel('weight')
-        plt.xlabel('height')
-        df[male].plot.scatter(ax=axes[0], x='Height', y='Weight', s=5,
-                              alpha=.5, c='blue', label='male')
-        df[~male].plot.scatter(ax=axes[0], x='Height', y='Weight', s=5,
-                               alpha=.5, c='r', label='female')
-
-        df[pred_male].plot.scatter(ax=axes[0], x='Height', y='Weight', s=.5,
-                                   c='k', label='male_preds')
-        df[~pred_male].plot.scatter(ax=axes[0], x='Height', y='Weight', s=.5,
-                                    c='white', label='female_preds')
 
         # subplot 2: matplotlib
         plt.ylabel('score')
         plt.xlabel('epoch')
         plt.plot(self.err_history, 'rx', label='loss')
-        plt.plot(self.acc_history, 'go', label='accuracy')
         plt.legend()
 
         plt.show()
@@ -168,8 +123,8 @@ def main():
     df = pd.read_csv('data/heights_weights_genders.csv')
     df.Gender = (df.Gender == 'Male').astype(int)
 
-    X = df[['Height', 'Weight']].values
-    y = df.Gender.values
+    X = df[['Height', 'Gender']].values
+    y = df.Weight.values
 
     # baseline
     print()
@@ -179,10 +134,12 @@ def main():
     print()
 
     # diy
-    lr = DIYLinearRegression(X, y, metric=rmse)
-    lr.train(150)
-    lr.display(df)
+    lr = DIYLinearRegression(X, y, metric=mse, verbose=0)
+    lr.fit(3000)
+    lr.display()
+
+    return lr
 
 
 if __name__ == '__main__':
-    main()
+    model = main()

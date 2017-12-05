@@ -7,4 +7,6 @@ these are not built to be computationally efficient (obviously, if you run them)
 ### models:
 1. Linear regression
 2. Logistic regression
-3. In progress: perceptron
+3. Farklebot (learns to play the dice game Farkle)
+
+In progress: perceptron

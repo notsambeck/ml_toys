@@ -1,13 +1,14 @@
 """
 a system that learns the dice game Farkle.
 Takeaways:
-1. large batch size is critical when there is high variance in outcomes; otherwise what a system absorbs is randomized
-by the scores between batches
-2. setting learning rate is hard; this is why ugly addition-based approaches work well.
-3. corollary: regularization sucks but is a reasonable way to keep weights in a reasonable size range
+1. large batch size is critical when there is high variance in outcomes;
+otherwise what a system absorbs is randomized by the scores between batches
+2. setting learning rate is hard; this is why ugly addition-based approaches
+work well and are the standard method.
+3. corollary: regularization sucks but is a reasonable way to keep weights
+in a reasonable size range
 """
 
-import random
 from collections import Counter
 import numpy as np
 import matplotlib.pyplot as plt
@@ -24,10 +25,7 @@ class Farkle:
     @staticmethod
     def roll(n):
         # roll n dice (static because it does not affect game state)
-        dice = []
-        for i in range(n):
-            dice.append(random.randint(1, 6))
-        return dice
+        return np.random.randint(1, 7, size=n)
 
     @staticmethod
     def score(dice, greedy=0):
@@ -174,11 +172,19 @@ class Farkle:
                 self.current_score = 100 * i
                 choice = self.decide(dice)
                 if choice:
-                    plt.scatter(dice, self.current_score, c='green')
+                    plt.scatter(dice, self.current_score, c='green', label='continue')
                 else:
-                    plt.scatter(dice, self.current_score, c='red')
+                    plt.scatter(dice, self.current_score, c='red', label='stop')
+        plt.title('decision boundary; red=stop')
+        plt.xlabel('dice remaining')
+        plt.ylabel('score')
         plt.show()
+
+        # histogram
         plt.figure()
+        plt.title('score distribution')
+        plt.xlabel('score')
+        plt.ylabel('frequency')
         plt.hist(self.score_history, bins=40)
         plt.show()
 
@@ -188,7 +194,7 @@ if __name__ == '__main__':
     best_score = 0
     best_theta = f.theta.copy()
 
-    games = 10000
+    games = 8000
     f.score_history = []
 
     # baseline
@@ -198,23 +204,25 @@ if __name__ == '__main__':
 
     last = np.mean(f.score_history)
     best_time = 0
-    delta = 50
+    delta = 100
+
+    print('running {} games per epoch for each weight'.format(games))
 
     print('initial score = {}, theta={}'.format(last, f.theta))
 
     # change parameters, if it works keep it
-    for step in range(100):
+    for step in range(50):
         if last == 0:
             last = 1
 
         # gradient - score(theta + delta) - score(theta)
         gradient = np.zeros(len(f.theta))
 
-        if step - best_time > 3:
-            delta /= 5
+        if step - best_time > 4:
+            delta /= 4
             best_time = step
             print('delta =', delta)
-            if delta < .01:
+            if delta < 10:
                 # end when changes are done
                 f.theta = best_theta.copy()
                 break

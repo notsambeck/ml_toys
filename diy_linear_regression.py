@@ -1,7 +1,7 @@
 '''
 diy linear regression learning algorithm
 
-specifically: use height and gender as independent variables
+use case: use height and gender as independent variables
 to estimate the weight of a person.
 '''
 
@@ -25,35 +25,56 @@ def mse(y, y_pred):
 
 class DIYLinearRegression():
     '''
-    implements linear regression;
-    a rough analog to sklearn.linear.LinearRegression.
-    additionally stores error and accuracy histories as lists.
+    implements linear regression on X, y;
+    a rough analog to sklearn LinearRegression.
+
+    dataset is standardized and stored with bias column added;
+    x_offset and x_scale allow new samples to be predicted.
+
+    additionally stores error  history as a list.
 
     args:
-        X, y: ndarrays with matching numbers of samples
-
-        metric: a function that maps (y, preds) to loss
+        X, y : ndarrays of data, labels
+        metric : a function that maps (y, preds) to loss
     '''
-    def __init__(self, X, y, metric=mse, verbose=1):
-        print('logistic regression on with {} as metric'.format(metric))
-        self.X = np.concatenate([np.ones((X.shape[0], 1)), X], axis=1)
-        self.y = y.copy()
-        self.n = X.shape[0]   # number of samples
+    def __init__(self, X, y, metric=mse, standardize=True, verbose=1):
         self.step = .001       # distance for gradient measurement
-        self.rate = .1         # how many times gradient to step
-        self.metric = metric  # accuracy or other metric
-
-        self.w = np.random.randn(X.shape[1] + 1)  # bias added to w
-        print('initialized weights to:', self.w)
-
+        self.rate = 100         # how many times gradient to step
+        self.metric = metric   # accuracy or other metric
         self.err_history = []
         self.v = verbose
-        if self.v:
-            print('X shape', self.X.shape)
 
-        for i in range(1):
-            print('Random sample sanity check:',
-                  self.X[np.random.randint(0, self.n)])
+        self.X = np.concatenate([np.ones((X.shape[0], 1)), X.copy()], axis=1)
+        self.y = y.copy()
+        self.n = self.X.shape[0]    # number of samples
+        self.w = np.random.randn(X.shape[1] + 1)
+
+        self.stdz = standardize
+        if self.stdz:
+            self.standardize()
+
+        if self.v:
+            print('logistic regression on with {} as metric'.format(metric))
+            print('X.shape', self.X.shape)
+            print('initialized weights to:', self.w)
+            for i in range(self.v):
+                print('Random sample sanity check:',
+                      self.X[np.random.randint(0, self.n)])
+
+    def standardize(self, data=None):
+        self.x_offset = np.mean(self.X, axis=0)
+        self.x_offset[0] = 0   # keep bias
+        self.X = self.X - self.x_offset
+        if self.v:
+            print('x_offset =', self.x_offset)
+
+        self.x_scale = np.concatenate([np.ones(1), np.std(self.X[:, 1:], axis=0)],
+                                      axis=0)
+        self.X = self.X / self.x_scale
+        if self.v:
+            print('x_scale =', self.x_scale)
+
+        return self.x_offset, self.x_scale
 
     def dumb_gradient(self):
         '''
@@ -66,17 +87,17 @@ class DIYLinearRegression():
         returns:
             gradient, error(metric), accuracy
         '''
-        error = self.metric(self.y, self.predict(self.X))
+        error = self.metric(self.y, np.dot(self.w, self.X.T))
         grad = []
         for i in range(len(self.w)):
             self.w[i] += self.step
             # print(self.w)
-            new_error = self.metric(self.y, self.predict(self.X))
+            new_error = self.metric(self.y, np.dot(self.w, self.X.T))
             self.w[i] -= self.step
             grad.append((error - new_error) / self.step)
 
         # grad is the change in error when w[i] is increased by self.step
-        # grad = dE/dw for w in weights
+        # i.e. grad = dE/dw for w in weights
         # if grad[i] is positive, increasing w[i] increases error in predictions
         return np.array(grad), error
 
@@ -89,10 +110,14 @@ class DIYLinearRegression():
             print('error:    {}'.format(error))
 
         self.w = (grad * self.rate / error) + self.w
+        if self.err_history and error > self.err_history[-1]:
+            self.rate /= 2
+            if self.v:
+                print('halve learning rate')
         self.err_history.append(error)
 
-    def fit(self, n):
-        '''train n epochs'''
+    def fit(self, n=150):
+        '''train n epochs; show either verbose output or progress bar'''
         if self.v:
             for i in range(n):
                 self._fit()
@@ -101,19 +126,62 @@ class DIYLinearRegression():
                 self._fit()
 
     def predict(self, x):
-        '''predict data'''
+        '''standardize, then predict for new data'''
+        if type(x) is list:
+            x = np.array(x)
+        # add bias if missing
+        if x.shape[1] == self.w.shape[0] - 1:
+            x = np.concatenate([np.ones((x.shape[0], 1)), x], axis=1)
+        elif x.shape[1] == self.w.shape[0]:
+            pass
+        else:
+            print('x.shape=', x.shape)
+            raise ValueError('new data must match shape of weights')
+        x = (x - self.x_offset) / self.x_scale
+        return self._predict(x)
+
+    def _predict(self, x):
+        '''for standardized data'''
         return np.dot(self.w, x.T)
+
+    def score(self):
+        # coefficient of determination to match sklearn lr.score
+        u = self.metric(self.y, self._predict(self.X))
+        v = self.metric(self.y, np.ones(self.n) * self.y.mean())
+        return 1 - u/v
 
     def display(self):
         # make masks
-        fig, axes = plt.subplots(nrows=1, ncols=1)
-        plt.title = 'gradient metric: {}'.format(self.metric)
+        fig, axes = plt.subplots(nrows=1, ncols=2)
+        axes[0].set_title('heights/weights')
+        axes[1].set_title('metric: {}'.format(self.metric))
+
+        male_x = np.compress(self.X[:, 2] > 0, self.X, axis=0)
+        male_y = np.compress(self.X[:, 2] > 0, self.y, axis=0)
+
+        female_x = np.compress(self.X[:, 2] < 0, self.X, axis=0)
+        female_y = np.compress(self.X[:, 2] < 0, self.y, axis=0)
+
+        axes[0].scatter(male_x[:, 1], male_y, alpha=.03)
+        axes[0].scatter(female_x[:, 1], female_y, alpha=.03, color='r')
+
+        # show linear predictions: male
+        line = np.stack([np.ones(100), np.linspace(-3, 3, 100), np.ones(100)]).T
+        axes[0].plot(line[:, 1], self._predict(line), color='c', label='preds: male')
+
+        # female
+        line = np.stack([np.ones(100), np.linspace(-3, 3, 100), np.ones(100) * -1]).T
+        axes[0].plot(line[:, 1], self._predict(line), color='pink', label='preds: female')
+
+        plt.xlabel('height')
+        plt.ylabel('weight')
+        axes[0].legend()
 
         # subplot 2: matplotlib
         plt.ylabel('score')
         plt.xlabel('epoch')
-        plt.plot(self.err_history, 'rx', label='loss')
-        plt.legend()
+        axes[1].plot(self.err_history, 'rx', label='loss')
+        axes[1].legend()
 
         plt.show()
 
@@ -135,7 +203,8 @@ def main():
 
     # diy
     lr = DIYLinearRegression(X, y, metric=mse, verbose=0)
-    lr.fit(3000)
+    lr.fit()
+    print('diy linear regression score:', lr.score())
     lr.display()
 
     return lr

@@ -1,16 +1,18 @@
 '''
-minesweeper for console use
+minesweeper in the console... works pretty ok
 '''
 import numpy as np
 from timeit import default_timer
 
 
 class Minesweeper:
+    """class represents the game & associated metadata"""
     def __init__(self, rows=10, cols=8, mines=None):
         self.rows = rows
         self.cols = cols
 
-        # board is rows * cols
+        # board is rows * cols; game state is stored in self._state[0:4] as ndarray
+        # also aliased as self.mines, etc. for convenience
         self._state = np.zeros((4, rows, cols), dtype='uint8')
         self.mines = self._state[0]
         self.counts = self._state[1]
@@ -37,15 +39,15 @@ class Minesweeper:
         for row in range(rows):
             for col in range(cols):
                 if not self.mines[row, col]:
-                    self.counts[row, col] = self.mine_count(row, col)
-                # otherwise zero
-
+                    self.counts[row, col] = self.count_mines(row, col)
+            # otherwise zero
         self.start_time = default_timer()
         self.play()
 
     def show_board(self):
-        print('time: {:.0f} seconds'.format(default_timer() - self.start_time))
-        print('mines: {}  flags: {}'.format(self.mine_qty, np.sum(self.flags)))
+        """print board to console, does not affect game state"""
+        print('timer running: {:.0f} seconds'.format(default_timer() - self.start_time))
+        print('board: mines={}  used_flags={}'.format(self.mine_qty, np.sum(self.flags)))
         print()
         print('* ' + ' '.join([str(i) for i in range(self.cols)]) + ' *')
         for row in range(self.rows):
@@ -73,8 +75,8 @@ class Minesweeper:
         # border
         print('* ' * (self.cols + 2))
 
-    def go(self, row, col):
-        # make a move; return True if game continues
+    def probe(self, row, col):
+        """test point (row, col); return True if game continues, else False"""
         if not self.valid_loc(row, col):
             print('invalid location')
             return True
@@ -83,30 +85,30 @@ class Minesweeper:
             print('repeat move is invalid')
             return True
 
-        # for valid moves:
+        # for valid moves, mark point as viewed:
         self.viewed[row, col] = 1
 
-        # if mine
+        # if rol, col is a mine
         if self.mines[row, col]:
             print('you lose!')
             return False
 
-        # if counts == 0: safe square, expand it
+        # if counts == 0: safe square, expand it recursively
         if self.counts[row, col] == 0:
             for i in [-1, 0, 1]:
                 for j in [-1, 0, 1]:
                     new_col = col + i
                     new_row = row + j
                     if self.valid_loc(new_row, new_col) and not self.viewed[new_row, new_col]:
-                        self.go(new_row, new_col)
+                        self.probe(new_row, new_col)
 
         return True
 
     def valid_loc(self, row, col):
         return (0 <= col < self.cols) and (0 <= row < self.rows)
 
-    def mine_count(self, row, col):
-        # count mines in adjacent squares
+    def count_mines(self, row, col):
+        """count mines in squares adjacent to (row, col)"""
         count = 0
         for i in [-1, 0, 1]:
             for j in [-1, 0, 1]:
@@ -121,28 +123,43 @@ class Minesweeper:
         return count
 
     def play(self):
-        game_on = True
+        """get player input and change game state"""
+        game_on = True   # whether game continues
         win = False
         while game_on:
             self.show_board()
-            f = input('for a flag, enter f or . ')
-            r = input('row: ')
-            c = input('col: ')
+            print('Enter coordinate for next move:')
+            c = input('x_coordinate 0-{}: '.format(self.cols - 1))
+            r = input('y_coordinate 0-{}: '.format(self.rows - 1))
             try:
                 r = int(r)
                 c = int(c)
             except ValueError:
-                print('numbers fool')
+                print('\n' * 8)
+                input('no, use numbers fool')
                 continue
 
-            if f == 'f' or f == '.' or f == 'F':
+            # get  move type
+            print('''
+Select move, then press enter. 
+
+    probe       <blank>
+    flag        move_type
+    back        b
+''')
+            move_type = input()
+            
+            if move_type.lower() in ['f,' 'flag', '.']:
                 self.flags[r, c] = 1 - self.flags[r, c]
+            elif move_type.lower() in ['b', 'back']:
+                continue
             else:
-                game_on = self.go(r, c)
+                game_on = self.probe(r, c)
 
             if np.array_equal(self.flags, self.mines):
                 win = True
                 break
+
             if np.array_equal(self.viewed, np.ones((self.rows, self.cols), 'uint8') - self.mines):
                 win = True
                 break
@@ -150,7 +167,7 @@ class Minesweeper:
                 continue
 
         if win:
-            print('DUDE!')
+            print('you won eh')
             print()
             print('   #######    ')
             print('  ##     ##   ')
@@ -159,17 +176,19 @@ class Minesweeper:
             print('  \  ===  /   ')
             print('    ----      ')
         else:
-            print('*wanh wah wah*')
-            print('   ______')
+            print('*wanh wah wah you are dead*')
+            print('   ______  ')
             print('  /      \ ')
             print('  | x   x |')
-            print('  |   o   |')
-            print('   \     /')
-            print('    ====')
-            print('    \__/')
-            print('game over; {} mines left'.format(np.sum((self.mines - self.flags).clip(0))))
-
-        replay = input('enter to replay')
+            print('  |   n   |')
+            print('   \     / ')
+            print('    ====   ')
+            print('    \__/   ')
+            print()
+            print('game over eh')
+        
+        print()
+        replay = input('press enter to replay...')
 
         if 'n' in replay.lower():
             return None

@@ -11,6 +11,7 @@ Rough analog to sklearn linear regression, using gradient descent.
 Rough analog to sklearn logistic regression, using gradient descent.
 ##### Farklebot
 learns to play the dice game Farkle
+
 Scoring is hard coded; decisions about whether to re-roll or quit with current score are learned by playing a large number of games, altering strategy, and calculating the gradient of score with respect to strategic changes. Interesting because the gradient of decision making algorithm is not well behaved.
 
 
